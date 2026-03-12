@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Mini-UnionFS development environment
+  unionfs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mini-unionfs:latest
+    container_name: unionfs-dev
+    
+    # Interactive terminal
+    stdin_open: true
+    tty: true
+    
+    # FUSE capabilities required for filesystem operations
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    
+    # Volume mounts for testing
+    volumes:
+      # Current project code
+      - .:/unionfs
+      
+      # Test directories (shared with host)
+      - ./test_data/lower:/tmp/lower
+      - ./test_data/upper:/tmp/upper
+      - ./test_data/mnt:/tmp/mnt
+      
+      # Allow FUSE to work properly
+      - /etc/fuse.conf:/etc/fuse.conf:ro
+    
+    # Security options for FUSE
+    security_opt:
+      - apparmor=unconfined
+    
+    # Working directory
+    working_dir: /unionfs
+    
+    # Default command
+    command: /bin/bash
+    
+    # Network (if needed for team communication)
+    networks:
+      - unionfs-network
+    
+    # Resource limits
+    mem_limit: 2g
+    cpus: 2
+
+networks:
+  unionfs-network:
+    driver: bridge
