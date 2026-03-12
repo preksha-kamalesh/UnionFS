@@ -1,0 +1,39 @@
+# ============================================================
+# docker-compose.yml — Mini-UnionFS
+#
+# Usage:
+#   docker compose build          # build the image (once)
+#   docker compose run --rm dev   # open a shell in the container
+#
+# Inside the container:
+#   make              # compile
+#   make setup-test   # create lower/upper/mnt dirs
+#   make mount        # mount the filesystem (foreground)
+# ============================================================
+
+services:
+  dev:
+    build: .
+    image: mini-unionfs-dev
+    container_name: mini_unionfs_dev
+
+    # Mount the repo into /app so edits on your host appear instantly
+    volumes:
+      - .:/app
+
+    # Required for FUSE to work inside Docker
+    devices:
+      - /dev/fuse
+
+    # Required capabilities for mounting filesystems
+    cap_add:
+      - SYS_ADMIN
+
+    security_opt:
+      - apparmor:unconfined
+
+    # Keep stdin open so the shell stays alive
+    stdin_open: true
+    tty: true
+
+    working_dir: /app

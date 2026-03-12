@@ -108,6 +108,29 @@ install-deps:
 	sudo apt-get install -y libfuse-dev pkg-config build-essential
 	@echo "Dependencies installed."
 
+# =============================================================================
+# Docker targets (use these on macOS / Windows)
+# =============================================================================
+
+.PHONY: docker-build
+docker-build:
+	docker compose build
+
+# Open an interactive shell in the container (your source is live-mounted)
+.PHONY: docker-shell
+docker-shell:
+	docker compose run --rm dev
+
+# Build the binary inside the container
+.PHONY: docker-make
+docker-make:
+	docker compose run --rm dev make
+
+# Run setup-test then mount inside the container
+.PHONY: docker-mount
+docker-mount:
+	docker compose run --rm dev bash -c 'make setup-test && make mount'
+
 .PHONY: help
 help:
 	@echo ""
@@ -120,5 +143,10 @@ help:
 	@echo "  clean         Remove build artifacts and binary"
 	@echo "  clean-test    Remove test directories (unmounts first)"
 	@echo "  install-deps  Install libfuse-dev on Ubuntu/Debian"
+	@echo "  --- Docker (macOS/Windows) ---"
+	@echo "  docker-build  Build the Docker image"
+	@echo "  docker-shell  Open a shell in the container"
+	@echo "  docker-make   Compile inside the container"
+	@echo "  docker-mount  setup-test + mount inside container"
 	@echo "  help          Show this message"
 	@echo ""
