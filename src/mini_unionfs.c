@@ -33,8 +33,7 @@
  *
  * Returns the attributes of whichever version the user should see.
  */
-static int unionfs_getattr(const char *path, struct stat *stbuf,
-                           struct fuse_file_info *fi) {
+static int unionfs_getattr(const char *path, struct stat *stbuf) {
     struct mini_unionfs_state *data = UNIONFS_DATA;
     char resolved_path[MAX_PATH_LEN];
     int ret;
@@ -93,7 +92,6 @@ static int unionfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     char lower_path[MAX_PATH_LEN];
     DIR *dp;
     struct dirent *de;
-    int res = 0;
     
     /* Allocate tracking array for files seen in upper directory */
     char **upper_files = malloc(10000 * sizeof(char *));
@@ -184,6 +182,7 @@ static int unionfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int unionfs_read(const char *path, char *buf, size_t size, off_t offset,
                        struct fuse_file_info *fi) {
+    (void) fi;
     int fd;
     int res;
     
@@ -210,6 +209,7 @@ static int unionfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 static int unionfs_write(const char *path, const char *buf, size_t size,
                         off_t offset, struct fuse_file_info *fi) {
+    (void) fi;
     int fd;
     int res;
     
@@ -236,6 +236,7 @@ static int unionfs_write(const char *path, const char *buf, size_t size,
 
 static int unionfs_create(const char *path, mode_t mode,
                          struct fuse_file_info *fi) {
+    (void) fi;
     struct mini_unionfs_state *data = UNIONFS_DATA;
     char upper_path[MAX_PATH_LEN];
     int fd;

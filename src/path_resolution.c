@@ -88,9 +88,7 @@ int is_whiteouted_internal(const char *upper_dir_path, const char *path) {
  * This version uses UNIONFS_DATA and should only be called from FUSE callbacks
  */
 int is_whiteouted(const char *path) {
-    /* Note: This function would use UNIONFS_DATA if FUSE context available
-     * For now, use the version below instead in main FUSE module
-     */
+    (void) path;
     return 0;
 }
 
@@ -108,9 +106,8 @@ int is_whiteouted(const char *path) {
  * @return RESOLVE_IN_UPPER, RESOLVE_IN_LOWER, RESOLVE_WHITEOUTED, or RESOLVE_NOT_FOUND
  */
 resolve_result_t resolve_path(const char *path, char *resolved_path) {
-    /* This is a legacy stub - actual implementation in directory_merge.c
-     * which has access to UNIONFS_DATA
-     */
+    (void) path;
+    (void) resolved_path;
     return RESOLVE_NOT_FOUND;
 }
 

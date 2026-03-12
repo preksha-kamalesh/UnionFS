@@ -155,12 +155,12 @@ echo -e "\n${YELLOW}Running Tests:${NC}\n"
 passed=0
 failed=0
 
-run_test 1 "Layer Visibility" test_visibility && ((passed++)) || ((failed++))
-run_test 2 "Copy-on-Write" test_copy_on_write && ((passed++)) || ((failed++))
-run_test 3 "Whiteout Mechanism" test_whiteout && ((passed++)) || ((failed++))
-run_test 4 "File Creation" test_file_creation && ((passed++)) || ((failed++))
-run_test 5 "Directory Listing" test_readdir && ((passed++)) || ((failed++))
-run_test 6 "Directory Creation" test_mkdir && ((passed++)) || ((failed++))
+run_test 1 "Layer Visibility" test_visibility      && passed=$((passed+1)) || failed=$((failed+1))
+run_test 2 "Copy-on-Write" test_copy_on_write       && passed=$((passed+1)) || failed=$((failed+1))
+run_test 3 "Whiteout Mechanism" test_whiteout       && passed=$((passed+1)) || failed=$((failed+1))
+run_test 4 "File Creation" test_file_creation       && passed=$((passed+1)) || failed=$((failed+1))
+run_test 5 "Directory Listing" test_readdir         && passed=$((passed+1)) || failed=$((failed+1))
+run_test 6 "Directory Creation" test_mkdir          && passed=$((passed+1)) || failed=$((failed+1))
 
 # Teardown
 echo -e "\n${YELLOW}Cleaning up...${NC}"
