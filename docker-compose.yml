@@ -32,7 +32,9 @@ services:
     security_opt:
       - apparmor:unconfined
 
-    # Keep stdin open so the shell stays alive
+    # Keep the container alive so you can docker exec into it
+    command: sleep infinity
+
     stdin_open: true
     tty: true
 
