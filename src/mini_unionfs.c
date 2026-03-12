@@ -221,10 +221,14 @@ static int unionfs_readdir(const char *path, void *buf,
                 strcmp(de->d_name, "..") == 0)
                 continue;
             /* Only add if not already present in upper */
-            snprintf(check_upper, sizeof(check_upper),
-                     "%s/%s", upper_path, de->d_name);
-            if (access(check_upper, F_OK) != 0)
-                filler(buf, de->d_name, NULL, 0);
+            {
+                int slen = snprintf(check_upper, sizeof(check_upper),
+                                    "%s/%s", upper_path, de->d_name);
+                if (slen < 0 || (size_t)slen >= sizeof(check_upper))
+                    continue;  /* path too long — skip safely */
+                if (access(check_upper, F_OK) != 0)
+                    filler(buf, de->d_name, NULL, 0);
+            }
         }
         closedir(dp);
     }
