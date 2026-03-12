@@ -40,11 +40,22 @@ void get_whiteout_name(const char *path, char *whiteout_name);
 
 /**
  * Check if a file is whiteouted in the upper directory
+ * Legacy version - requires FUSE context (stub)
  *
  * @param path      Path to check
  * @return          1 if whiteouted, 0 otherwise
  */
 int is_whiteouted(const char *path);
+
+/**
+ * Check if a file is whiteouted with explicit upper directory path
+ * Preferred parametrized version for modularity
+ *
+ * @param upper_dir Path to upper directory
+ * @param path      Path to check
+ * @return          1 if whiteouted, 0 otherwise
+ */
+int is_whiteouted_internal(const char *upper_dir, const char *path);
 
 /**
  * Resolve file location across layers

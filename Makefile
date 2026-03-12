@@ -6,7 +6,7 @@ FUSE_LIBS = $(shell pkg-config --libs fuse)
 LDFLAGS = $(FUSE_LIBS)
 
 TARGET = mini_unionfs
-SOURCES = src/mini_unionfs.c
+SOURCES = src/mini_unionfs.c src/path_resolution.c
 OBJECTS = $(SOURCES:.c=.o)
 
 all: $(TARGET)
