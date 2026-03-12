@@ -1,0 +1,16 @@
+# Build outputs
+build/
+mini_unionfs
+
+# Test layer directories (created by make setup-test)
+lower_dir/
+upper_dir/
+mnt/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+.vscode/
