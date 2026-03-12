@@ -16,26 +16,23 @@ jobs:
       # Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
-      
-      # Build Docker image
-      - name: Build Docker image
-        run: docker build -t mini-unionfs .
-      
-      # Run automated tests in Docker
-      - name: Run automated tests
-        run: docker run --cap-add SYS_ADMIN --device /dev/fuse -v $(pwd):/unionfs mini-unionfs make test
-      
-      # Check code compilation
-      - name: Verify clean build
-        run: docker run --cap-add SYS_ADMIN --device /dev/fuse -v $(pwd):/unionfs mini-unionfs make clean && make
-      
-      # Test with docker-compose
-      - name: Test with docker-compose
+
+      # Enable FUSE on the GitHub Actions runner
+      - name: Enable FUSE
         run: |
-          docker-compose build
-          docker-compose up -d
-          docker-compose exec -T unionfs make test
-          docker-compose down
+          sudo apt-get update -y
+          sudo apt-get install -y fuse libfuse-dev
+          sudo modprobe fuse
+          sudo chmod 666 /dev/fuse
+          sudo chown root:$USER /dev/fuse
+
+      # Build directly on runner (no Docker needed for compile check)
+      - name: Build project
+        run: make clean && make
+
+      # Run tests directly on runner with FUSE available
+      - name: Run automated tests
+        run: make test
 
   # Code quality checks (optional)
   code-quality:
@@ -52,7 +49,7 @@ jobs:
       - name: Verify file structure
         run: |
           test -f src/path_resolution.c || exit 1
-          test -f src/directory_merge.c || exit 1
+          test -f src/mini_unionfs.c || exit 1
           test -f Makefile || exit 1
           test -f tests/test_unionfs.sh || exit 1
           echo "✓ All required files present"
