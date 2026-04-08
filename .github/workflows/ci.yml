@@ -1,0 +1,78 @@
+name: Mini-UnionFS CI/CD
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Build and test the Mini-UnionFS project
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Enable FUSE on the GitHub Actions runner
+      - name: Enable FUSE
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y fuse libfuse-dev
+          sudo modprobe fuse
+          sudo chmod 666 /dev/fuse
+          sudo chown root:$USER /dev/fuse
+
+      # Build directly on runner (no Docker needed for compile check)
+      - name: Build project
+        run: make clean && make
+
+      # Run tests directly on runner with FUSE available
+      - name: Run automated tests
+        run: make test
+
+  # Code quality checks (optional)
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Check for compilation warnings
+        run: docker build -t mini-unionfs . 2>&1 | grep -i warning || echo "No warnings found"
+      
+      - name: Verify file structure
+        run: |
+          test -f src/path_resolution.c || exit 1
+          test -f src/mini_unionfs.c || exit 1
+          test -f Makefile || exit 1
+          test -f tests/test_unionfs.sh || exit 1
+          echo "✓ All required files present"
+
+  # Documentation checks
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Check documentation exists
+        run: |
+          test -f docs/DESIGN.md || exit 1
+          test -f docs/TASK_PATH_RESOLUTION.md || exit 1
+          test -f README.md || exit 1
+          echo "✓ All documentation files present"
+      
+      - name: Verify documentation format
+        run: |
+          # Check for common markdown issues
+          grep -q "^#" docs/DESIGN.md || exit 1
+          grep -q "^#" docs/TASK_PATH_RESOLUTION.md || exit 1
+          echo "✓ Documentation properly formatted"

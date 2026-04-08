@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Test artifacts
+unionfs_test_env/
+test_data/
+.unionfs_test_env
+*.mnt
+
+# Build artifacts
+*.o
+mini_unionfs
+*.a
+
+# IDE/Editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (not needed in image)
+docs/*.md
+README.md
+
+# Shell scripts (included separately)
+REFERENCE.sh
+SETUP_COMPLETE.md
+
+# Node modules / Python venv (if any)
+node_modules/
+venv/
+__pycache__/
+
+# Temporary files
+*.tmp
+*.log
