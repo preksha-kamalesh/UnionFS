@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
+#include <limits.h>
 
 #include "path_resolution.h"
 
@@ -19,6 +20,104 @@
 
 /* Global state passed to FUSE */
 #define UNIONFS_DATA ((struct mini_unionfs_state *) fuse_get_context()->private_data)
+
+static int ensure_parent_dirs(const char *file_path) {
+    char path_copy[MAX_PATH_LEN];
+    size_t len;
+
+    if (!file_path) {
+        return -EINVAL;
+    }
+
+    len = strnlen(file_path, MAX_PATH_LEN);
+    if (len == 0 || len >= MAX_PATH_LEN) {
+        return -ENAMETOOLONG;
+    }
+
+    strcpy(path_copy, file_path);
+
+    for (char *p = path_copy + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(path_copy, 0755) == -1 && errno != EEXIST) {
+                return -errno;
+            }
+            *p = '/';
+        }
+    }
+
+    return 0;
+}
+
+static int copy_file_to_upper(const char *src_path, const char *dst_path, mode_t mode) {
+    int src_fd;
+    int dst_fd;
+    ssize_t bytes_read;
+    char buffer[8192];
+
+    src_fd = open(src_path, O_RDONLY);
+    if (src_fd == -1) {
+        return -errno;
+    }
+
+    dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    if (dst_fd == -1) {
+        int saved_errno = errno;
+        close(src_fd);
+        return -saved_errno;
+    }
+
+    while ((bytes_read = read(src_fd, buffer, sizeof(buffer))) > 0) {
+        ssize_t total_written = 0;
+        while (total_written < bytes_read) {
+            ssize_t wrote = write(dst_fd, buffer + total_written, bytes_read - total_written);
+            if (wrote == -1) {
+                int saved_errno = errno;
+                close(src_fd);
+                close(dst_fd);
+                return -saved_errno;
+            }
+            total_written += wrote;
+        }
+    }
+
+    if (bytes_read == -1) {
+        int saved_errno = errno;
+        close(src_fd);
+        close(dst_fd);
+        return -saved_errno;
+    }
+
+    close(src_fd);
+    close(dst_fd);
+    return 0;
+}
+
+static int copy_up_if_needed(struct mini_unionfs_state *data, const char *path) {
+    char upper_path[MAX_PATH_LEN];
+    char lower_path[MAX_PATH_LEN];
+    struct stat lower_st;
+    struct stat upper_st;
+    int ret;
+
+    construct_path(data->upper_dir, path, upper_path);
+    construct_path(data->lower_dir, path, lower_path);
+
+    if (stat(lower_path, &lower_st) != 0) {
+        return 0;
+    }
+
+    if (stat(upper_path, &upper_st) == 0) {
+        return 0;
+    }
+
+    ret = ensure_parent_dirs(upper_path);
+    if (ret != 0) {
+        return ret;
+    }
+
+    return copy_file_to_upper(lower_path, upper_path, lower_st.st_mode & 0777);
+}
 
 /* FUSE Operations */
 
@@ -215,12 +314,22 @@ static int unionfs_write(const char *path, const char *buf, size_t size,
     
     struct mini_unionfs_state *data = UNIONFS_DATA;
     char resolved_path[MAX_PATH_LEN];
-    int ret = resolve_path_with_dirs(path, data->lower_dir, data->upper_dir, resolved_path);
-    if (ret != RESOLVE_IN_UPPER && ret != RESOLVE_IN_LOWER) {
+    char upper_path[MAX_PATH_LEN];
+    int ret;
+
+    ret = resolve_path_with_dirs(path, data->lower_dir, data->upper_dir, resolved_path);
+    if (ret == RESOLVE_NOT_FOUND || ret == RESOLVE_WHITEOUTED) {
         return -ENOENT;
     }
+
+    ret = copy_up_if_needed(data, path);
+    if (ret < 0) {
+        return ret;
+    }
+
+    construct_path(data->upper_dir, path, upper_path);
     
-    fd = open(resolved_path, O_WRONLY);
+    fd = open(upper_path, O_WRONLY);
     if (fd == -1) {
         return -errno;
     }
@@ -239,9 +348,15 @@ static int unionfs_create(const char *path, mode_t mode,
     (void) fi;
     struct mini_unionfs_state *data = UNIONFS_DATA;
     char upper_path[MAX_PATH_LEN];
+    int ret;
     int fd;
     
     construct_path(data->upper_dir, path, upper_path);
+
+    ret = ensure_parent_dirs(upper_path);
+    if (ret != 0) {
+        return ret;
+    }
     
     fd = open(upper_path, O_CREAT | O_WRONLY | O_EXCL, mode);
     if (fd == -1) {
@@ -256,41 +371,38 @@ static int unionfs_open(const char *path, struct fuse_file_info *fi) {
     struct mini_unionfs_state *data = UNIONFS_DATA;
     char resolved_path[MAX_PATH_LEN];
     char upper_path[MAX_PATH_LEN];
-    char lower_path[MAX_PATH_LEN];
-    struct stat st;
+    char open_target[MAX_PATH_LEN];
     int fd;
+    int res;
     
     /* Resolve path to find actual location */
-    int res = resolve_path_with_dirs(path, data->lower_dir, data->upper_dir, resolved_path);
+    res = resolve_path_with_dirs(path, data->lower_dir, data->upper_dir, resolved_path);
     if (res != RESOLVE_IN_UPPER && res != RESOLVE_IN_LOWER && !(fi->flags & O_CREAT)) {
         return -ENOENT;
     }
     
     construct_path(data->upper_dir, path, upper_path);
-    construct_path(data->lower_dir, path, lower_path);
     
-    /* Copy-on-Write: If writing to a lower_dir file, copy it to upper_dir first */
+    /* Copy-on-Write: If writing to a lower-only file, copy it to upper first. */
     if ((fi->flags & (O_WRONLY | O_RDWR | O_APPEND)) && 
-        stat(lower_path, &st) == 0 && stat(upper_path, &st) != 0) {
-        
-        /* File exists only in lower, need to copy to upper */
-        char cmd[2 * MAX_PATH_LEN + 10];
-        
-        /* Ensure upper directory exists */
-        char *upper_copy = strdup(upper_path);
-        char *upper_dir_part = dirname(upper_copy);
-        mkdir(upper_dir_part, 0755);
-        free(upper_copy);
-        
-        /* Copy file */
-        snprintf(cmd, sizeof(cmd), "cp '%s' '%s'", lower_path, upper_path);
-        if (system(cmd) != 0) {
-            return -EIO;
+        (res == RESOLVE_IN_LOWER || (res == RESOLVE_NOT_FOUND && !(fi->flags & O_CREAT)))) {
+        int copy_ret = copy_up_if_needed(data, path);
+        if (copy_ret < 0) {
+            return copy_ret;
         }
     }
+
+    if ((fi->flags & (O_WRONLY | O_RDWR | O_APPEND | O_CREAT))) {
+        int mk_ret = ensure_parent_dirs(upper_path);
+        if (mk_ret < 0) {
+            return mk_ret;
+        }
+        strcpy(open_target, upper_path);
+    } else {
+        strcpy(open_target, resolved_path);
+    }
     
-    /* Open the file from the resolved location (upper takes precedence if exists) */
-    fd = open(resolved_path, fi->flags, 0644);
+    fd = open(open_target, fi->flags, 0644);
     if (fd == -1) {
         return -errno;
     }
