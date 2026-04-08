@@ -37,7 +37,7 @@ This global structure holds the mount configuration and is passed to all FUSE ca
 
 ### 2.3 Path Resolution Algorithm
 
-The `resolve_path()` function implements the layering precedence:
+The active path resolver is `resolve_path_with_dirs()` (used by FUSE callbacks). The legacy `resolve_path()` symbol exists but is currently a stub.
 
 1. **Whiteout Check**: If `.wh.<filename>` exists in upper_dir, the file is deleted (return ENOENT)
 2. **Upper Layer**: If file exists in upper_dir, use it (precedence)
@@ -75,7 +75,7 @@ This ensures:
 
 **open**: Implements Copy-on-Write logic
 - If opening lower_dir file with write flags (O_WRONLY, O_RDWR, O_APPEND):
-  - Copy entire file to upper_dir using system `cp` command
+  - Copy entire file to upper_dir using internal helpers (`copy_up_if_needed()` and `copy_file_to_upper()`)
   - Subsequent writes happen in upper_dir
   - Lower_dir remains unmodified
 - Flags checked: `O_WRONLY | O_RDWR | O_APPEND`
@@ -133,9 +133,9 @@ This ensures:
 ### 4.3 Directory Scenarios
 
 **Scenario**: User creates file in non-existent subdirectory
-- **Handler**: mkdir() explicitly creates parent in upper_dir first
-- **Action**: Hierarchical directory creation
-- **Result**: New directory structure in upper_dir
+- **Handler**: create()/open() call `ensure_parent_dirs()` before creating the file in upper_dir
+- **Action**: Parent directories are created as needed for file creation paths
+- **Result**: New file hierarchy is materialized in upper_dir
 
 **Scenario**: User lists directory existing in both layers
 - **Handler**: readdir() merges listings smartly
@@ -143,20 +143,22 @@ This ensures:
 - **Result**: Single merged directory view
 
 **Scenario**: Nested whiteouts (whiteout in subdirectory)
-- **Handler**: readdir() recursively checks subdirectory whiteouts
-- **Action**: Full path whiteout names preserve uniqueness
-- **Result**: Correct hiding of nested deleted files
+- **Handler**: readdir() checks whiteouts for the entries being listed in the current directory
+- **Action**: Full entry paths are checked against upper-layer whiteout markers
+- **Result**: Correct hiding of deleted entries in the listed directory view
 
 ### 4.4 Concurrency and Consistency
 
-**Assumption**: Single-threaded FUSE daemon (default configuration)
+**Assumption**: Effectively single-threaded runtime behavior for this assignment setup
 - No locking required for path resolution
 - Atomic operations rely on OS filesystem atomicity
 - File descriptor reuse prevented by OS
 
+Note: The program forces foreground/debug flags (`-f`, `-d`) in `main()`. Threading mode is treated as a runtime/deployment assumption, not a hard guarantee encoded as a dedicated threading flag.
+
 **Potential Race Condition**: CoW during concurrent access
-- **Current Handling**: cp command is atomic for file contents
-- **Improvement Needed**: Add fine-grained locking if multi-threaded
+- **Current Handling**: CoW copies bytes via `copy_file_to_upper()` before write-path redirection
+- **Improvement Needed**: Add fine-grained locking and stronger atomicity guarantees for highly concurrent workloads
 
 ### 4.5 Filesystem Integrity
 
