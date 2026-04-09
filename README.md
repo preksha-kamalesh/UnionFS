@@ -1,344 +1,289 @@
-# Mini-UnionFS - Team Collaboration Guide
+# Mini-UnionFS: A FUSE-Based Union Filesystem
 
-## Current Project Status
+Mini-UnionFS is a lightweight implementation of a union filesystem for Linux using FUSE (Filesystem in Userspace). It demonstrates how an overlay filesystem can merge a read-only lower directory with a read-write upper directory, implementing copy-on-write semantics and whiteout-based deletion tracking.
 
-**Main Branch:** `main` - Production-ready baseline  
-**Total Team Members:** 4  
-**Active Development Branches:**
-- `feature/path-resolution-layer-logic` (Navyashree) - Path resolution & merged directory logic
-- (Create your own branches for your work)
+## What it Does
 
----
+Mini-UnionFS stacks two directories:
+- **Lower directory** (read-only): The base layer, typically containing template data or defaults
+- **Upper directory** (read-write): The modification layer, holding copies and new files
 
-## For Each Team Member
+When users interact with the mounted filesystem, the C code handles layer precedence, transparent file copying, and deletion masking—all without modifying the lower layer directly.
 
-### Your Task Assignment
-1. **Navyashree**: Path Resolution & Layer Logic (`feature/path-resolution-layer-logic`)
-2. **Team Member 2**: File I/O Operations (reads/writes)
-3. **Team Member 3**: Copy-on-Write Implementation
-4. **Team Member 4**: Deletion & Whiteout Operations
+## Build and Run
 
-### Creating Your Branch
+### Prerequisites
+- FUSE library (libfuse-dev on Debian/Ubuntu)
+- GCC compiler
+- Linux kernel with FUSE support (or WSL2/Docker)
+
+### Compilation
 ```bash
-# Clone the repository (if you haven't already)
-git clone <repo-url>
-cd UnionFS
-
-# Create your feature branch from main
-git checkout main
-git pull
-git checkout -b feature/your-feature-name
-
-# Example:
-# git checkout -b feature/copy-on-write
-# git checkout -b feature/file-io-operations
+make clean && make
 ```
 
-### Common Git Workflow
-
+### Running the Filesystem
 ```bash
-# 1. Make sure you're on your branch
-git status
-
-# 2. Make changes to your files
-# ... edit src/your_module.c ...
-
-# 3. Check what changed
-git diff
-
-# 4. Stage your changes
-git add src/your_module.c
-# or add everything
-git add -A
-
-# 5. Commit with descriptive message
-git commit -m "feat: implement path resolution for whiteout files"
-# Format: [type]: [description]
-# Types: feat, fix, refactor, docs, test, chore
-
-# 6. Push to repository
-git push origin feature/your-feature-name
-
-# 7. Create Pull Request (on GitHub/GitLab)
-# Link to main branch for review
-```
-
-### Commit Message Format
-
-Use conventional commits:
-```
-feat: add feature description
-fix: fix description
-refactor: refactor description
-docs: update documentation
-test: add/update tests
-chore: maintenance tasks
+./mini_unionfs -l /path/to/lower -u /path/to/upper /path/to/mount
 ```
 
 Example:
-```
-git commit -m "feat: implement resolve_path() with whiteout checking"
-git commit -m "fix: correct path construction for root directory files"
-git commit -m "docs: add path resolution algorithm explanation"
-```
-
----
-
-## Working with Multiple Branches
-
-### Viewing All Branches
 ```bash
-git branch -a
-git branch -v        # with last commit info
+mkdir -p lower upper mnt
+echo "base" > lower/base.txt
+./mini_unionfs -l $(pwd)/lower -u $(pwd)/upper $(pwd)/mnt
 ```
 
-### Switching Between Branches
+To unmount:
 ```bash
-git checkout feature/path-resolution-layer-logic
-git checkout feature/copy-on-write
-git checkout main
+fusermount -u ./mnt
 ```
 
-### Updating Your Branch with Latest Main
+### Test Suite
 ```bash
-git fetch origin
-git rebase origin/main
-# or merge if you prefer:
-git merge origin/main
-```
-
-### Seeing Branch History
-```bash
-git log --oneline --graph --all
-```
-
----
-
-## Code Integration Strategy
-
-### Before Starting on Someone's Code
-
-Check **what's already implemented** in each module:
-
-- [x] **path_resolution.c** (Navyashree) - CORE FOUNDATION
-  - resolve_path()
-  - construct_path()
-  - get_whiteout_name()
-  - is_whiteouted()
-
-- [ ] **file_io.c** (Team Member 2) - READS/WRITES
-  - unionfs_read()
-  - unionfs_write()
-
-- [ ] **copy_on_write.c** (Team Member 3) - CoW LOGIC
-  - unionfs_open()
-  - copy_file_to_upper()
-
-- [ ] **deletion.c** (Team Member 4) - DELETION HANDLING
-  - unionfs_unlink()
-  - unionfs_rmdir()
-
-### Dependency Graph
-
-```
-path_resolution.c (Foundation - started first)
-        ↓
-        ├→ directory_merge.c (uses path_resolution)
-        ├→ file_io.c (uses path_resolution)
-        ├→ copy_on_write.c (uses path_resolution)
-        └→ deletion.c (uses path_resolution)
-```
-
-**Navyashree's module must be working first!**
-
----
-
-## Testing Across Branches
-
-### Branch-Specific Tests
-```bash
-# Test only your feature
 make test
-
-# Compile without testing
-make clean && make
 ```
 
-### Integration Testing (All Features)
-```bash
-# On main branch after all PRs merged
-git checkout main
-git pull
-make clean && make
-make test
-# All 6 tests should pass
-```
+Runs 6 automated tests covering layer visibility, copy-on-write, whiteout mechanism, file creation, directory listing, and directory operations.
+
+## Architecture Overview
+
+The implementation consists of three core components:
+
+1. **mini_unionfs.c** - FUSE operation handlers and filesystem callbacks
+2. **path_resolution.c** - Layer precedence resolver and whiteout checking
+3. **path_resolution.h** - Header with type definitions and function declarations
+
+Key design decisions:
+- Whiteout markers use the .wh. prefix to hide lower files without deletion
+- Copy-on-write is triggered on file open with write flags
+- Directory listing merges entries from both layers, hiding duplicates and whiteouts
+- Parent directory hierarchy is auto-created when writing to nested paths
+
+## Live Demonstration: The Four Core Mechanisms
+
+The project can be verified with four terminal-based checks. Each one shows one core filesystem behavior.
 
 ---
 
-## Handling Merge Conflicts
+### Demonstration 1: The Merged View (Path Resolution and Directory Listing)
 
-If merging main into your branch causes conflicts:
+**Project behavior:** The filesystem gives priority to the upper layer and merges file lists from both layers without duplicates.
 
-### Option 1: Rebase (Cleaner History)
+**Code sections:** resolve_path_with_dirs() and unionfs_readdir()
+
+**Preparation:**
 ```bash
-git fetch origin
-git rebase origin/main
-
-# If conflicts occur:
-# 1. Edit conflicting files manually
-# 2. Keep the needed changes
-# 3. git add <file>
-# 4. git rebase --continue
+echo "lower content" > lower/base.txt
+echo "upper content" > upper/upper.txt
+echo "lower version" > lower/conflict.txt
+echo "upper version" > upper/conflict.txt
 ```
 
-### Option 2: Merge (Three-way Merge)
+**Terminal demonstration:**
 ```bash
-git fetch origin
-git merge origin/main
+ls mnt/
+# Output shows all three files merged together
 
-# If conflicts occur:
-# 1. Edit conflicting files
-# 2. git add <file>
-# 3. git commit -m "Merge main into feature branch"
+cat mnt/conflict.txt
+# Output: upper version (proves priority)
 ```
+
+**Result:** You see all files in one merged view. If a file exists in both layers, the upper file is used.
 
 ---
 
-## Pull Request Checklist
+### Demonstration 2: Copy-on-Write Trigger
 
-Before creating a PR:
+**Project behavior:** If a file exists only in lower and you write to it, the file is copied to upper first, then modified there.
 
-- [ ] Code compiles without errors/warnings: `make clean && make`
-- [ ] Your tests pass: `make test`
-- [ ] Code is commented and documented
-- [ ] No debugging print statements (or mark them clearly)
-- [ ] Commits are clean and well-organized
-- [ ] Branch is up to date with main: `git rebase origin/main`
+**Code sections:** unionfs_open(), copy_up_if_needed(), and copy_file_to_upper()
+
+**Preparation:**
+```bash
+echo "original data" > lower/data.txt
+# Upper directory remains empty
+```
+
+**Terminal demonstration:**
+```bash
+echo "added text" >> mnt/data.txt
+# This triggers the copy-on-write mechanism
+
+cat lower/data.txt
+# Output: original data (unchanged)
+
+ls upper/
+# Shows: data.txt (now exists in upper)
+
+cat mnt/data.txt
+# Output: original data + added text
+```
+
+**Result:** The lower file stays unchanged. The new version is created and updated in upper.
 
 ---
 
-## File Organization
+### Demonstration 3: Creating New Data and Nested Paths
+
+**Project behavior:** New folders and files are created only in upper. Missing parent folders are created automatically.
+
+**Code sections:** ensure_parent_dirs(), unionfs_mkdir(), and unionfs_create()
+
+**Preparation:**
+```bash
+# Start with clean lower and upper directories
+# Only mnt is available for writing
+```
+
+**Terminal demonstration:**
+```bash
+mkdir -p mnt/new_folder/sub_folder/
+
+echo "hello world" > mnt/new_folder/sub_folder/new_doc.txt
+
+ls -R lower/
+# Output shows only original files, nothing new
+
+ls -R upper/
+# Output shows the complete nested structure:
+# new_folder/
+# new_folder/sub_folder/
+# new_folder/sub_folder/new_doc.txt
+```
+
+**Result:** Nested paths are created correctly in upper, and lower remains unchanged.
+
+---
+
+### Demonstration 4: Whiteout Deletion Illusion
+
+**Project behavior:** Deleting a lower-layer file from the mount creates a whiteout marker in upper, which hides the file.
+
+**Code sections:** get_whiteout_name(), unionfs_unlink(), and is_whiteouted_internal()
+
+**Preparation:**
+```bash
+echo "delete me" > lower/delete_this.txt
+# Upper directory is empty
+```
+
+**Terminal demonstration:**
+```bash
+ls mnt/delete_this.txt
+# File appears normally
+
+rm mnt/delete_this.txt
+# Delete the file
+
+ls mnt/ | grep delete_this.txt
+# Output is empty (file appears deleted)
+
+cat lower/delete_this.txt
+# Output: delete me (file still exists physically)
+
+ls -a upper/
+# Output shows: .wh.delete_this.txt (the whiteout marker)
+```
+
+**Result:** The file disappears in the mount view, but the real lower file still exists. A `.wh.*` file in upper stores the delete marker.
+
+---
+
+## Project Requirements Coverage
+
+This implementation fulfills all course project requirements:
+
+1. **Layer Stacking** - Demonstrated in mechanisms 1 and 4
+2. **Copy-on-Write** - Demonstrated in mechanism 2
+3. **Whiteout-Based Deletion** - Demonstrated in mechanism 4
+4. **POSIX Operations** - Demonstrated in mechanisms 2 and 3
+
+## File Structure
 
 ```
 UnionFS/
 ├── src/
-│   ├── mini_unionfs.c          (Main FUSE driver - integrates all modules)
-│   ├── path_resolution.h/.c    (Navyashree's module) ✅
-│   ├── directory_merge.h/.c    (Navyashree's module) ✅
-│   ├── file_io.h/.c            (Team Member 2's module)
-│   ├── copy_on_write.h/.c      (Team Member 3's module)
-│   └── deletion.h/.c           (Team Member 4's module)
+│   ├── mini_unionfs.c          Main FUSE operations
+│   ├── path_resolution.c       Layer precedence resolver
+│   └── path_resolution.h       Header definitions
 ├── tests/
-│   └── test_unionfs.sh         (Automated test suite)
+│   └── test_unionfs.sh         Automated test suite
 ├── docs/
-│   ├── DESIGN.md               (System design overview)
-│   ├── TASK_PATH_RESOLUTION.md (Navyashree's detailed task)
-│   └── (Add more docs as needed)
-├── Makefile
-└── README.md (this file)
+│   └── DESIGN.md               Detailed design documentation
+├── Makefile                    Build configuration
+├── README.md                   This file
+└── .github/workflows/
+    └── ci.yml                  Continuous integration pipeline
 ```
 
----
+## Design Highlights
 
-## Updating mini_unionfs.c for Integration
+### Path Resolution Algorithm
 
-The main driver file needs minimal changes to include new modules:
+The resolve_path_with_dirs() function implements core layer precedence:
 
-```c
-#include "path_resolution.h"
-#include "directory_merge.h"
-#include "file_io.h"
-#include "copy_on_write.h"
-#include "deletion.h"
+1. Check if file is whiteouted in upper layer (if yes, return NOT_FOUND)
+2. If file exists in upper layer, resolve from there
+3. Otherwise, resolve from lower layer
+4. If file is in neither, return NOT_FOUND
 
-static struct fuse_operations unionfs_oper = {
-    .getattr = unionfs_getattr,    // from directory_merge.c
-    .readdir = unionfs_readdir,    // from directory_merge.c
-    .read = unionfs_read,          // from file_io.c
-    .write = unionfs_write,        // from file_io.c
-    .open = unionfs_open,          // from copy_on_write.c
-    .unlink = unionfs_unlink,      // from deletion.c
-    .rmdir = unionfs_rmdir,        // from deletion.c
-    // ... other operations ...
-};
-```
+### Directory Merging Strategy
 
-**Who updates this?** The team lead or whoever is integrating final code.
+When reading directories, unionfs_readdir() prevents duplicates by:
+- Reading entries from both layers into a combined set
+- Filtering out entries that are whiteouted
+- Returning deduplicated results to FUSE
 
----
+### Copy-on-Write Activation
 
-## Communication
+CoW is triggered in unionfs_open() when:
+- File is opened with write flags (O_WRONLY or O_RDWR)
+- File exists in lower layer but not in upper layer
+- At which point copy_file_to_upper() transfers all bytes to upper
 
-### Before Starting Work
-Post in team chat:
-```
-"Starting on [feature/branch-name]"
-"Implementation plan: [brief description]"
-```
+### Whiteout Declaration
 
-### While Working
-Update your progress:
-```
-"Trying to fix path construction issue"
-"Has anyone tested whiteout mechanism?"
-```
+Deletion in unionfs_unlink() works by:
+- Creating a special .wh. prefix file in the upper directory
+- is_whiteouted_internal() checks for this marker during resolution
+- The lower file never gets deleted, just masked
 
-### When Complete
-```
-"[feature/name] complete and tested"
-"Ready for code review"
-"PR created: [link]"
-```
+## Testing
 
----
+The test suite validates:
+- Layer visibility (upper layer shadowing lower layer)
+- Copy-on-write mechanics (file copies on write, lower unchanged)
+- Whiteout masking (deleted files remain hidden)
+- File creation (new files go to upper layer)
+- Directory merging (no duplicates in listings)
+- Directory operations (mkdir and rmdir work through layers)
 
-## Useful Git Commands Reference
-
+Run tests with:
 ```bash
-# Status and info
-git status                    # See current state
-git log --oneline            # See recent commits
-git diff                      # See uncommitted changes
-git diff --staged            # See staged changes
-
-# Branching
-git branch -a                # List all branches
-git checkout -b new-branch   # Create and switch
-git checkout branch-name     # Switch branch
-git branch -d branch-name    # Delete branch (local)
-
-# Syncing
-git fetch origin             # Get latest without merging
-git pull origin main         # Fetch and merge main
-git push origin branch-name  # Push your branch
-
-# Undoing
-git restore file.c           # Discard changes in file
-git reset HEAD file.c        # Unstage file
-git revert <commit>          # Undo a commit
-
-# Debugging
-git log --oneline --all --graph   # Visual branch history
-git show <commit>                  # See what changed in commit
+make test
 ```
 
----
+All six tests passing indicates correct implementation of every core mechanism.
 
-## Success Criteria for Team Completion
+## Limitations
 
-- [x] All team members have feature branches
-- [x] Code modules are implemented independently
-- [ ] All automated tests pass (6/6)
-- [ ] Code compiles without warnings
-- [ ] Design document is complete
-- [ ] All features merged to main
-- [ ] Project ready for submission
+- FUSE performance overhead compared to kernel-space filesystems
+- Threading Model assumes single-threaded FUSE context
+- Symlinks and special files not fully supported
+- No permission inheritance beyond basic mode bits
+- Limited extended attributes support
 
----
+## References
 
-## Questions?
+- FUSE 31 API documentation
+- Linux Unionfs and Overlayfs design patterns
+- Copy-on-write filesystem semantics
 
-Talk to your team lead or post in team chat. Don't let issues block you—reach out!
+## Project Status
 
-Happy coding! 🚀
+This Mini-UnionFS implementation is complete with all four mechanisms working correctly and validated through automated testing.
+
+Build status: Passing
+Test status: 6 out of 6 tests passing
+Documentation status: Complete and aligned with implementation
