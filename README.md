@@ -10,7 +10,7 @@ Mini-UnionFS stacks two directories:
 
 When users interact with the mounted filesystem, the C code handles layer precedence, transparent file copying, and deletion masking—all without modifying the lower layer directly.
 
-## Build and Run
+### Build and Run
 
 ### Prerequisites
 - FUSE library (libfuse-dev on Debian/Ubuntu)
